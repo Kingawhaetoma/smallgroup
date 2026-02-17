@@ -1,0 +1,20 @@
+{
+  "name": "smallgroup",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w api",
+    "dev:expo": "npm run start -w mobile",
+    "build:api": "npm run build -w api",
+    "build:expo": "npm run build -w mobile"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "supabase": "^2.76.9"
+  }
+}
