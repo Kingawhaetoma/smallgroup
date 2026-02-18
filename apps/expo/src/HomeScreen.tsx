@@ -139,6 +139,15 @@ export function HomeScreen() {
       setVerseMemory(Array.isArray(versesRes) ? versesRes : []);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      const lower = message.toLowerCase();
+      const authFailed =
+        lower.includes("tenant or user not found") ||
+        lower.includes("unauthorized") ||
+        lower.includes("(401)");
+      if (authFailed) {
+        await signOut();
+        return;
+      }
       console.error(e);
       setLoadErrorRaw(message);
       setLoadError(friendlyLoadError(message));
@@ -1000,6 +1009,7 @@ const styles = StyleSheet.create({
     borderColor: nature.border,
     borderRadius: 8,
   },
+  buttonDisabled: { opacity: 0.5 },
   buttonPressed: { opacity: 0.8 },
   signOutText: { color: nature.mutedForeground, fontSize: 16 },
 });
