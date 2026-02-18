@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, verifyToken } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { users, groups, groupMembers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -42,8 +42,51 @@ async function getClerkIdentity() {
   return { authId: userId, email: safeEmail, displayName };
 }
 
-export async function getOrSyncUser(_request: Request) {
-  const identity = await getClerkIdentity();
+async function getClerkIdentityFromBearer(request: Request) {
+  const authHeader = request.headers.get("authorization") ?? request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (!token) return null;
+
+  try {
+    const result = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
+
+    const claims = result.data as Record<string, unknown> | undefined;
+    const subject = claims && typeof claims.sub === "string" ? claims.sub : null;
+    if (!subject) return null;
+    const email =
+      getClaimString(claims, "email") ??
+      getClaimString(claims, "email_address") ??
+      getClaimString(claims, "primary_email_address");
+    const firstName =
+      getClaimString(claims, "first_name") ??
+      getClaimString(claims, "given_name");
+    const lastName =
+      getClaimString(claims, "last_name") ??
+      getClaimString(claims, "family_name");
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    const displayName =
+      fullName ||
+      getClaimString(claims, "name") ||
+      getClaimString(claims, "username") ||
+      email ||
+      "Member";
+
+    return {
+      authId: subject,
+      email: email ?? `${subject}@clerk.local`,
+      displayName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getOrSyncUser(request: Request) {
+  const identity = (await getClerkIdentity()) ?? (await getClerkIdentityFromBearer(request));
   if (!identity) return null;
   const { authId, email, displayName } = identity;
 
