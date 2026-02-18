@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { users, groups, groupMembers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -6,22 +6,40 @@ import { randomUUID } from "crypto";
 
 const DEFAULT_GROUP_NAME = "Small Group";
 
+function getClaimString(claims: unknown, key: string): string | null {
+  if (!claims || typeof claims !== "object") return null;
+  const value = (claims as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 async function getClerkIdentity() {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) return null;
-  try {
-    const client = await clerkClient();
-    const clerkUser = await client.users.getUser(userId);
-    const email =
-      clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ??
-      clerkUser.emailAddresses[0]?.emailAddress ??
-      "";
-    const fullName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim();
-    const displayName = fullName || clerkUser.username || email || "Member";
-    return { authId: clerkUser.id, email, displayName };
-  } catch {
-    return null;
-  }
+
+  const email =
+    getClaimString(sessionClaims, "email") ??
+    getClaimString(sessionClaims, "email_address") ??
+    getClaimString(sessionClaims, "primary_email_address");
+
+  const firstName =
+    getClaimString(sessionClaims, "first_name") ??
+    getClaimString(sessionClaims, "given_name");
+  const lastName =
+    getClaimString(sessionClaims, "last_name") ??
+    getClaimString(sessionClaims, "family_name");
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+  const displayName =
+    fullName ||
+    getClaimString(sessionClaims, "name") ||
+    getClaimString(sessionClaims, "username") ||
+    email ||
+    "Member";
+
+  // Keep user creation resilient even if session token omits email claims.
+  const safeEmail = email ?? `${userId}@clerk.local`;
+
+  return { authId: userId, email: safeEmail, displayName };
 }
 
 export async function getOrSyncUser(_request: Request) {
